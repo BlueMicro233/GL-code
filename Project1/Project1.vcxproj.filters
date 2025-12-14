@@ -15,11 +15,24 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src1.cpp">
+    <ClCompile Include="renderer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="glad.c">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="tex.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\..\..\Desktop\stb_image.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="..\container.jpg">
+      <Filter>资源文件</Filter>
+    </Image>
   </ItemGroup>
 </Project>
