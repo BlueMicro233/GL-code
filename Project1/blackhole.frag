@@ -9,6 +9,7 @@ in vec2 texCoord; // 从顶点着色器传入的纹理坐标
 #define _Steps  12. // 吸积盘纹理层数
 #define _Size 0.3   // 黑洞大小
 
+
 // Uniform 变量（对应 Shadertoy 的内置变量）
 uniform float iTime;       // 时间
 uniform vec2 iResolution;  // 窗口分辨率
@@ -135,6 +136,7 @@ void Rotate(inout vec3 vector, vec2 angle)
     vector.yz = cos(angle.y)*vector.yz + sin(angle.y)*vec2(-1,1)*vector.zy;
     vector.xz = cos(angle.x)*vector.xz + sin(angle.x)*vec2(-1,1)*vector.zx;
 }
+
 
 void main()
 {

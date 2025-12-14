@@ -130,8 +130,6 @@
   <ItemGroup>
     <ClCompile Include="glad.c" />
     <ClCompile Include="renderer.cpp" />
-    <ClCompile Include="shader_read.cpp" />
-    <ClCompile Include="tex.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\..\..\Desktop\stb_image.h" />
@@ -141,8 +139,8 @@
     <Image Include="..\container.jpg" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="blackhole.frag" />
-    <None Include="blackhole.vert" />
+    <None Include="stress_test.frag" />
+    <None Include="stress_test.vert" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

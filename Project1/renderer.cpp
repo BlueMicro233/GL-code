@@ -1,212 +1,164 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
-#include <cmath>
-#include "shader_read.h"
+#include <fstream>
+#include <sstream>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
-float iTime = 0.0f;          // 时间
-float iMouseX = 0.0f, iMouseY = 0.0f; // 鼠标位置（归一化）
+GLFWwindow* window = nullptr;
+int width = 1280, height = 720;
+glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 5.0f); // 相机初始位置
+glm::vec2 lastMousePos = glm::vec2(width / 2, height / 2);
+float yaw = -90.0f, pitch = 0.0f;
+bool firstMouse = true;
 
-// 读取着色器文件
-std::string vertexShaderCode = readShaderFile("blackhole.vert");
-std::string fragmentShaderCode = readShaderFile("blackhole.frag");
-
-// 转换为const char*（OpenGL 接口要求）
-const char* vertexShaderSource = vertexShaderCode.c_str();
-const char* fragmentShaderSource = fragmentShaderCode.c_str();
-
-// 创建空纹理（绑定iChannel0，避免着色器采样未绑定纹理报错）
-unsigned int createDummyTexture()
+std::string readShader(const char* path) 
 {
-    unsigned int tex;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    // 填充1x1的白色像素
-    unsigned char data[] = { 255, 255, 255, 255 };
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-    // 设置纹理参数
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    return tex;
+    std::ifstream file(path);
+    if (!file) { std::cerr << "Failed to open shader: " << path << std::endl; return ""; }
+    std::stringstream ss; ss << file.rdbuf();
+    return ss.str();
 }
 
-void framebuffer_size_callback(GLFWwindow *window, int width, int height)
+GLuint createProgram(const char* vertPath, const char* fragPath) 
 {
-    glViewport(0, 0, width, height);
+    // 1. 编译顶点着色器
+    std::string vertCode = readShader(vertPath);
+    const char* vCode = vertCode.c_str();
+    GLuint vertShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertShader, 1, &vCode, nullptr);
+    glCompileShader(vertShader);
+    // 检查编译错误
+    GLint success; char info[512];
+    glGetShaderiv(vertShader, GL_COMPILE_STATUS, &success);
+    if (!success) { glGetShaderInfoLog(vertShader, 512, nullptr, info); std::cerr << "VERT ERROR: " << info << std::endl; }
+
+    // 2. 编译片段着色器
+    std::string fragCode = readShader(fragPath);
+    const char* fCode = fragCode.c_str();
+    GLuint fragShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragShader, 1, &fCode, nullptr);
+    glCompileShader(fragShader);
+    glGetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
+    if (!success) { glGetShaderInfoLog(fragShader, 512, nullptr, info); std::cerr << "FRAG ERROR: " << info << std::endl; }
+
+    // 3. 链接程序
+    GLuint program = glCreateProgram();
+    glAttachShader(program, vertShader);
+    glAttachShader(program, fragShader);
+    glLinkProgram(program);
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success) { glGetProgramInfoLog(program, 512, nullptr, info); std::cerr << "LINK ERROR: " << info << std::endl; }
+
+    // 清理临时对象
+    glDeleteShader(vertShader);
+    glDeleteShader(fragShader);
+    return program;
 }
 
-void processInput(GLFWwindow* window)
+// 初始化全屏四边形（VAO/VBO）
+void initQuad(GLuint& VAO, GLuint& VBO) 
 {
-    if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
+    float quad[] = { -1,1, -1,-1, 1,-1, 1,1 }; // NDC 坐标
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), 0);
+    glEnableVertexAttribArray(0);
 }
 
-void mouse_callback(GLFWwindow* window, double xpos, double ypos)
+// 鼠标回调：控制相机视角
+void mouseCallback(GLFWwindow* win, double x, double y) 
 {
-    iMouseX = static_cast<float>(xpos) / 800;
-    iMouseY = static_cast<float>(ypos) / 600;
+    if (firstMouse) { lastMousePos = glm::vec2(x, y); firstMouse = false; }
+    float xOff = x - lastMousePos.x;
+    float yOff = lastMousePos.y - y;
+    lastMousePos = glm::vec2(x, y);
+
+    xOff *= 0.1f; yOff *= 0.1f;
+    yaw += xOff; pitch += yOff;
+    pitch = glm::clamp(pitch, -89.0f, 89.0f);
 }
 
+// 键盘回调：控制相机移动
+void keyCallback(GLFWwindow* win, int key, int sc, int act, int mod) 
+{
+    float speed = 0.1f;
+    if (key == GLFW_KEY_ESCAPE && act == GLFW_PRESS) glfwSetWindowShouldClose(win, true);
+    if (key == GLFW_KEY_W) cameraPos += speed * glm::vec3(cos(glm::radians(yaw)), 0, sin(glm::radians(yaw)));
+    if (key == GLFW_KEY_S) cameraPos -= speed * glm::vec3(cos(glm::radians(yaw)), 0, sin(glm::radians(yaw)));
+    if (key == GLFW_KEY_A) cameraPos -= speed * glm::normalize(glm::cross(glm::vec3(cos(glm::radians(yaw)), 0, sin(glm::radians(yaw))), glm::vec3(0, 1, 0)));
+    if (key == GLFW_KEY_D) cameraPos += speed * glm::normalize(glm::cross(glm::vec3(cos(glm::radians(yaw)), 0, sin(glm::radians(yaw))), glm::vec3(0, 1, 0)));
+}
 
-int main()
+int main() 
 {
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-    // create GLFW window
-    GLFWwindow* window = glfwCreateWindow(800, 600, "renderer", NULL, NULL);
-    if (window == NULL)
-    {
-        std::cout << "失败！" << std::endl;
-        glfwTerminate();
-        return -1;
-    }
+    window = glfwCreateWindow(width, height, "renderer", nullptr, nullptr);
     glfwMakeContextCurrent(window);
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    glfwSetCursorPosCallback(window, mouse_callback);
+    glfwSetCursorPosCallback(window, mouseCallback);
+    glfwSetKeyCallback(window, keyCallback);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    // 加载 GLAD
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) 
     {
-        std::cout << "失败！" << std::endl;
+        std::cerr << "GLAD init failed!" << std::endl;
         return -1;
     }
 
-    // 着色器构建与编译
-	// 顶点着色器
-    unsigned int vertexShader;
-    vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    GLuint program = createProgram("stress_test.vert", "stress_test.frag");
+    GLuint VAO, VBO;
+    initQuad(VAO, VBO);
 
-    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-    glCompileShader(vertexShader);
-    // 纠错
-	int success;
-	char infoLog[512];
-	glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-	if (!success)
-	{
-		glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-		std::cout << "顶点着色器编译失败！" << std::endl;
-		std::cout << infoLog << std::endl;
-	}
 
-	// 像素着色器
-	unsigned int fragmentShader;
-	fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-	glCompileShader(fragmentShader);
-	// 纠错
-	glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-	if (!success)
-	{
-		glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-		std::cout << "像素着色器编译失败！" << std::endl;
-		std::cout << infoLog << std::endl;
-	}
+    GLint uViewLoc = glGetUniformLocation(program, "u_view");
+    GLint uProjLoc = glGetUniformLocation(program, "u_proj");
+    GLint uInvViewProjLoc = glGetUniformLocation(program, "u_invViewProj");
+    GLint uCameraPosLoc = glGetUniformLocation(program, "u_cameraPos");
 
-	// 着色器程序
-	unsigned int shaderProgram;
-	shaderProgram = glCreateProgram();
-	glAttachShader(shaderProgram, vertexShader);
-	glAttachShader(shaderProgram, fragmentShader);
-	glLinkProgram(shaderProgram);
-	// 纠错
-	glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
-	if (!success)
-	{
-		glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
-		std::cout << "着色器程序链接失败！" << std::endl;
-		std::cout << infoLog << std::endl;
-	}
 
-	// 使用着色器程序
-	glUseProgram(shaderProgram);
-
-	// 删除着色器对象
-	glDeleteShader(vertexShader);
-	glDeleteShader(fragmentShader);
-
-    // 顶点
-    float quadVertices[] = {
-        // 位置          // 纹理坐标
-        -1.0f,  1.0f,    0.0f, 1.0f, // 左上
-        -1.0f, -1.0f,    0.0f, 0.0f, // 左下
-        1.0f, -1.0f,    1.0f, 0.0f, // 右下
-        1.0f,  1.0f,    1.0f, 1.0f  // 右上
-    };
-    unsigned int indices[] = { 0, 1, 2, 0, 2, 3 };
-	unsigned int VAO, VBO, EBO;
-
-    glGenVertexArrays(1, &VAO);
-	glGenBuffers(1, &VBO);
-    glGenBuffers(1, &EBO);
-    // 0. 绑定
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
-
-    // 索引缓冲（绘制两个三角形组成四边形）
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-    // 位置属性（layout 0）
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    // 纹理坐标属性（layout 1）
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    // 3. 创建并绑定 dummy 纹理（修复 iChannel0 未绑定问题）
-    unsigned int dummyTex = createDummyTexture();
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, dummyTex);
-
-    // 3. 获取Uniform位置（用于传递数据）
-    GLint iTimeLoc = glGetUniformLocation(shaderProgram, "iTime");
-    GLint iResolutionLoc = glGetUniformLocation(shaderProgram, "iResolution");
-    GLint iMouseLoc = glGetUniformLocation(shaderProgram, "iMouse");
-    GLint iChannel0Loc = glGetUniformLocation(shaderProgram, "iChannel0");
-
-    // 渲染循环
-    while (!glfwWindowShouldClose(window))
+    while (!glfwWindowShouldClose(window)) 
     {
-        // 输入
-        processInput(window);
 
-        iTime += glfwGetTime();
-        glfwSetTime(0.0); // 重置 GLFW 时间，避免溢出
-
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        // 使用着色器程序
-        glUseProgram(shaderProgram);
+        glm::mat4 view = glm::lookAt(
+            cameraPos,
+            cameraPos + glm::vec3(cos(glm::radians(yaw)) * cos(glm::radians(pitch)), sin(glm::radians(pitch)), sin(glm::radians(yaw)) * cos(glm::radians(pitch))),
+            glm::vec3(0, 1, 0)
+        );
+        glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)width / height, 0.1f, 100.0f);
+        glm::mat4 invViewProj = glm::inverse(proj * view);
 
-        // 传 Uniform 变量
-        glUniform1f(iTimeLoc, iTime);
-        glUniform2f(iResolutionLoc, 800, 600);
-        glUniform2f(iMouseLoc, iMouseX * 800, iMouseY * 600);
-        glUniform1i(iChannel0Loc, 0); // 绑定纹理单元 0 到 iChannel0
+        // 设置 Uniform
+        glUseProgram(program);
+        glUniformMatrix4fv(uViewLoc, 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(uProjLoc, 1, GL_FALSE, glm::value_ptr(proj));
+        glUniformMatrix4fv(uInvViewProjLoc, 1, GL_FALSE, glm::value_ptr(invViewProj));
+        glUniform3fv(uCameraPosLoc, 1, glm::value_ptr(cameraPos));
 
-        // 绘制全屏四边形
+        // 绘制全屏四边形（触发光线步进）
         glBindVertexArray(VAO);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // 检查并调用事件，交换缓冲
-        glfwPollEvents();
+        // 交换缓冲区 + 事件处理
         glfwSwapBuffers(window);
+        glfwPollEvents();
     }
 
+    // 清理资源
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
-    glDeleteBuffers(1, &EBO);
-    glDeleteProgram(shaderProgram);
-    glDeleteTextures(1, &dummyTex);
-
+    glDeleteProgram(program);
     glfwTerminate();
-
     return 0;
 }
