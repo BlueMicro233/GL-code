@@ -24,9 +24,15 @@
     <ClCompile Include="tex.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="shader_read.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\..\..\Desktop\stb_image.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="shader_read.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
@@ -34,5 +40,13 @@
     <Image Include="..\container.jpg">
       <Filter>资源文件</Filter>
     </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="blackhole.frag">
+      <Filter>源文件</Filter>
+    </None>
+    <None Include="blackhole.vert">
+      <Filter>源文件</Filter>
+    </None>
   </ItemGroup>
 </Project>
