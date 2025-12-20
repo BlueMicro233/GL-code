@@ -1,7 +1,7 @@
 # mlp_neuralshader
 一个 7 层 MLP 的神经网络着色器，展示纹理空间光照的拟合效果。
 
-Forked from [A coffee cup lightmap neural net](https://www.shadertoy.com/view/fl3BWB)
+已经过一定性能优化，forked from [A coffee cup lightmap neural net](https://www.shadertoy.com/view/fl3BWB)
 
 # 环境配置
 
