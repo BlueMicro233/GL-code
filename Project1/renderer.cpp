@@ -6,15 +6,29 @@
 
 float iTime = 0.0f;          // 时间
 float iMouseX = 0.0f, iMouseY = 0.0f; // 鼠标位置（归一化）
-bool iMousePressed = false;
 
 // 读取着色器文件
-std::string vertexShaderCode = readShaderFile("mlpshader.vert");
-std::string fragmentShaderCode = readShaderFile("mlpshader.frag");
+std::string vertexShaderCode = readShaderFile("blackhole.vert");
+std::string fragmentShaderCode = readShaderFile("blackhole.frag");
 
-// 转换为 const char*（OpenGL 接口要求）
+// 转换为const char*（OpenGL 接口要求）
 const char* vertexShaderSource = vertexShaderCode.c_str();
 const char* fragmentShaderSource = fragmentShaderCode.c_str();
+
+// 创建空纹理（绑定iChannel0，避免着色器采样未绑定纹理报错）
+unsigned int createDummyTexture()
+{
+    unsigned int tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    // 填充1x1的白色像素
+    unsigned char data[] = { 255, 255, 255, 255 };
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    // 设置纹理参数
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    return tex;
+}
 
 void framebuffer_size_callback(GLFWwindow *window, int width, int height)
 {
@@ -27,21 +41,10 @@ void processInput(GLFWwindow* window)
         glfwSetWindowShouldClose(window, true);
 }
 
-// GLFW 鼠标位置回调：更新归一化鼠标坐标
-void mousePosCallback(GLFWwindow* window, double xpos, double ypos) {
-    // 获取窗口尺寸
-    int width, height;
-    glfwGetWindowSize(window, &width, &height);
-    // 转换为归一化坐标（0 ~ 1），Y 轴翻转（匹配着色器逻辑）
-    iMouseX = static_cast<float>(xpos) / width;
-    iMouseY = 1.0f - static_cast<float>(ypos) / height; // 翻转Y轴
-}
-
-// GLFW鼠标按键回调：更新按下状态
-void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
-    if (button == GLFW_MOUSE_BUTTON_LEFT) {
-        iMousePressed = (action == GLFW_PRESS);
-    }
+void mouse_callback(GLFWwindow* window, double xpos, double ypos)
+{
+    iMouseX = static_cast<float>(xpos) / 800;
+    iMouseY = static_cast<float>(ypos) / 600;
 }
 
 
@@ -62,8 +65,8 @@ int main()
     }
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    glfwSetCursorPosCallback(window, mousePosCallback);
-    glfwSetMouseButtonCallback(window, mouseButtonCallback);
+    glfwSetCursorPosCallback(window, mouse_callback);
+
     // 加载 GLAD
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
@@ -139,7 +142,7 @@ int main()
     glGenVertexArrays(1, &VAO);
 	glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
-    // 绑定
+    // 0. 绑定
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
@@ -156,6 +159,12 @@ int main()
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
+    // 3. 创建并绑定 dummy 纹理（修复 iChannel0 未绑定问题）
+    unsigned int dummyTex = createDummyTexture();
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, dummyTex);
+
+    // 3. 获取Uniform位置（用于传递数据）
     GLint iTimeLoc = glGetUniformLocation(shaderProgram, "iTime");
     GLint iResolutionLoc = glGetUniformLocation(shaderProgram, "iResolution");
     GLint iMouseLoc = glGetUniformLocation(shaderProgram, "iMouse");
@@ -164,31 +173,29 @@ int main()
     // 渲染循环
     while (!glfwWindowShouldClose(window))
     {
+        // 输入
         processInput(window);
 
-        float deltaTime = static_cast<float>(glfwGetTime());
-        glfwSetTime(0.0);
-        iTime += deltaTime;
+        iTime += glfwGetTime();
+        glfwSetTime(0.0); // 重置 GLFW 时间，避免溢出
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
+        // 使用着色器程序
         glUseProgram(shaderProgram);
 
+        // 传 Uniform 变量
         glUniform1f(iTimeLoc, iTime);
-        glUniform2f(iResolutionLoc, 800.0f, 600.0f);
-        glUniform4f(
-            iMouseLoc,
-            iMouseX,
-            iMouseY,
-            iMousePressed ? 1.0f : 0.0f,
-            iMousePressed ? 1.0f : 0.0f
-        );
-        glUniform1i(iChannel0Loc, 0);
+        glUniform2f(iResolutionLoc, 800, 600);
+        glUniform2f(iMouseLoc, iMouseX * 800, iMouseY * 600);
+        glUniform1i(iChannel0Loc, 0); // 绑定纹理单元 0 到 iChannel0
 
+        // 绘制全屏四边形
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
+        // 检查并调用事件，交换缓冲
         glfwPollEvents();
         glfwSwapBuffers(window);
     }
@@ -197,6 +204,7 @@ int main()
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
     glDeleteProgram(shaderProgram);
+    glDeleteTextures(1, &dummyTex);
 
     glfwTerminate();
 
