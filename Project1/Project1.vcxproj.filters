@@ -42,10 +42,10 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
-    <None Include="blackhole.frag">
+    <None Include="mlpshader.frag">
       <Filter>源文件</Filter>
     </None>
-    <None Include="blackhole.vert">
+    <None Include="mlpshader.vert">
       <Filter>源文件</Filter>
     </None>
   </ItemGroup>

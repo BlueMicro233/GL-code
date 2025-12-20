@@ -141,8 +141,8 @@
     <Image Include="..\container.jpg" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="blackhole.frag" />
-    <None Include="blackhole.vert" />
+    <None Include="mlpshader.frag" />
+    <None Include="mlpshader.vert" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
